@@ -1,49 +1,43 @@
 esphome:
   platform: esp32
-  name: century-vs-pump-controller
-  board: pico32
-  on_boot:
-    then:
-      light.turn_on:
-        id: id_light_1
-        blue: 1.0
-        brightness: 0.3
-        green: 1.0
-        red: 1.0
-wifi:
-  ap:
-    password: !secret ap_PWD
-    ssid: century-vs-pump-controller
-  password: !secret wifi_PWD
-  ssid: !secret wifi_SSID
-captive_portal:
+  name: pool_pump_controller
+  board: esp32dev
+ includes:
+    - components/flow_rate_sensor/flow_rate_sensor.h  # Include the custom C++ file for the flow sensor
+    
+ethernet:
+  type: W5500
+  clk_pin: GPIO18
+  mosi_pin: GPIO23
+  miso_pin: GPIO19
+  cs_pin: GPIO33
+
 logger:
+
 api:
-  password: !secret api_PWD
+  password: "PQLVtmP9qwyFnlWX7W"
+
 ota:
-  password: !secret ota_PWD
+  - platform: esphome
+    password: "PQLVtmP9qwyFnlWX7W"
+
 time:
   - platform: homeassistant
     id: homeassistant_time
+
 external_components:
-  # Needed to implement latest modbus user-defined function handling
-  # prior to 2022.8.0
-  #- source:
-  #    type: git
-  #    url: https://github.com/gazoodle/esphome
-  #    ref: bug-fix-modbus-user-defined-function-handling
-  #  components: [modbus]
-  # Location of CenturyVSPump component implementation
   - source:
       type: git
       url: https://github.com/gazoodle/CenturyVSPump
       ref: main
+
 binary_sensor:
   - platform: gpio
     name: Pool Pump Controller button
     pin:
       inverted: True
       number: GPIO39
+
 button:
   - platform: template
     name: Pool Pump Controller Demand 600RPM
@@ -69,7 +63,9 @@ button:
         - number.set:
             id: id_number_rpm
             value: 3450
+
 centuryvspump:
+
 light:
   - platform: neopixelbus
     name: Pool Pump Controller LED
@@ -77,16 +73,16 @@ light:
     num_leds: 1
     pin: GPIO27
     variant: SK6812
+
 modbus:
   id: id_modbus_3
+
 number:
   - platform: centuryvspump
     name: Pool Pump Controller Demand
     id: id_number_rpm
+
 sensor:
-  - platform: wifi_signal
-    name: Pool Pump Controller Wifi Signal
-    update_interval: 60min
   - platform: centuryvspump
     name: Pool Pump Controller RPM
     type: rpm
@@ -98,16 +94,27 @@ sensor:
     scale: 4
     type: custom
     unit_of_measurement: RPM
+  - platform: custom
+    lambda: |-
+      auto flow_sensor = new FlowRateSensor();
+      App.register_component(flow_sensor);
+      return {flow_sensor->get_flow_sensor()};
+    sensors:
+      name: "Flow Rate"
+      unit_of_measurement: "GPH"
+
 switch:
   - platform: centuryvspump
     name: Pool Pump Controller Run
     id: id_switch_4
+
 uart:
   id: id_uart_2
   baud_rate: 9600
   debug:
-  rx_pin: GPIO22
-  tx_pin: GPIO19
+  rx_pin: GPIO3
+  tx_pin: GPIO1
+
 web_server:
   local: True
   port: 80
