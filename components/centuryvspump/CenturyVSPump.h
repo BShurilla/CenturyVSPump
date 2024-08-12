@@ -5,19 +5,22 @@
 #include "esphome/components/modbus/modbus.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/switch/switch.h"
+
 #include <queue>
 #include <list>
 
-namespace esphome {
+namespace esphome
+{
     using namespace modbus;
 
-    namespace century_vs_pump {
+    namespace century_vs_pump
+    {
 
         class CenturyVSPump;
         class CenturyVSPumpSensor;
 
-        /////////////////////////////////////////////////////////////////////////////////////////////////
-        class CenturyPumpCommand {
+        class CenturyPumpCommand
+        {
         public:
             static const uint8_t MAX_SEND_REPEATS = 5;
             CenturyVSPump *pump_{};
@@ -36,8 +39,8 @@ namespace esphome {
             static CenturyPumpCommand create_set_demand_command(CenturyVSPump *pump, uint16_t demand, std::function<void(CenturyVSPump *pump)> on_confirmation_func);
         };
 
-        /////////////////////////////////////////////////////////////////////////////////////////////////
-        class CenturyPumpItemBase {
+        class CenturyPumpItemBase
+        {
         public:
             CenturyPumpItemBase() : pump_(nullptr) {}
             CenturyPumpItemBase(CenturyVSPump *pump) : pump_(pump) {}
@@ -50,9 +53,11 @@ namespace esphome {
         };
 
 #ifdef MODBUS_ENABLE_SWITCH
-        class CenturyPumpEnabledSwitch : public esphome::switch_::Switch {
+        class CenturyPumpEnabledSwitch : public esphome::switch_::Switch
+        {
         public:
-            void write_state(bool state) override {
+            void write_state(bool state) override
+            {
                 enabled_ = state;
                 this->publish_state(enabled_);
             }
@@ -62,8 +67,9 @@ namespace esphome {
         };
 #endif
 
-        /////////////////////////////////////////////////////////////////////////////////////////////////
-        class CenturyVSPump : public PollingComponent, public ModbusDevice {
+        class CenturyVSPump : public PollingComponent,
+                              public ModbusDevice
+        {
         public:
             CenturyVSPump() {}
 
@@ -74,14 +80,18 @@ namespace esphome {
             void update() override;
             void dump_config() override;
 
+            void setup_flow_sensor();
+            float read_flow_rate();
+
+            /// called when a modbus response was parsed without errors
             void on_modbus_data(const std::vector<uint8_t> &data) override;
+            /// called when a modbus error response was received
             void on_modbus_error(uint8_t function_code, uint8_t exception_code) override;
+            /// Registers an item with the controller. Called by esphomes code generator
             void add_item(CenturyPumpItemBase *item) { items_.push_back(item); }
             void queue_command_(const CenturyPumpCommand &cmd);
 
-            // Flow Rate Sensor Integration
-            void setup_flow_sensor();
-            float read_flow_rate();
+            static void IRAM_ATTR flowPulseCounter();
 
         protected:
             void process_modbus_data_(const CenturyPumpCommand *response);
@@ -93,11 +103,9 @@ namespace esphome {
             uint32_t last_command_timestamp_;
             uint16_t command_throttle_{10};
 
-            // Flow Rate Sensor Variables
-            byte flowSensorPin = 4; // GPIO pin where the flow sensor is connected (Q0.0 / GPIO4)
+            // Flow sensor related variables
+            volatile uint32_t flowPulseCount = 0;
             float flowCalibrationFactor = 0.2;
-            volatile byte flowPulseCount = 0;
-            float flowRate = 0.0;
             unsigned long oldTime = 0;
 
         public:
@@ -108,22 +116,5 @@ namespace esphome {
 #endif
         };
 
-        void IRAM_ATTR flowPulseCounter() {
-            flowPulseCount++;
-        }
-
-        void CenturyVSPump::setup_flow_sensor() {
-            pinMode(flowSensorPin, INPUT);
-            digitalWrite(flowSensorPin, HIGH);
-            attachInterrupt(digitalPinToInterrupt(flowSensorPin), flowPulseCounter, FALLING);
-        }
-
-        float CenturyVSPump::read_flow_rate() {
-            float flowRateGPH;
-            if ((millis() - oldTime) > 900) {
-                detachInterrupt(digitalPinToInterrupt(flowSensorPin));
-                flowRateGPH = ((1000.0 / (millis() - oldTime)) * flowPulseCount) / flowCalibrationFactor * 15.8503;
-                oldTime = millis();
-                flowPulseCount = 0;
-                attachInterrupt(digitalPinToInterrupt(flowSensorPin), flowPulseCounter, FALLING);
-            
+    }
+}
