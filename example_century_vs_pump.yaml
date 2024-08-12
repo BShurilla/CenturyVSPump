@@ -2,8 +2,6 @@ esphome:
   platform: esp32
   name: pool_pump_controller
   board: esp32dev
- includes:
-    - components/flow_rate_sensor/flow_rate_sensor.h  # Include the custom C++ file for the flow sensor
     
 ethernet:
   type: W5500
