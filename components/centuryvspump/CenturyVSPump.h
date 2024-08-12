@@ -104,7 +104,7 @@ namespace esphome
             uint16_t command_throttle_{10};
 
             // Flow sensor related variables
-            volatile uint32_t flowPulseCount = 0;
+            static volatile uint32_t flowPulseCount;  // Static to be accessible in a static function
             float flowCalibrationFactor = 0.2;
             unsigned long oldTime = 0;
 
