@@ -28,7 +28,7 @@ time:
 external_components:
   - source:
       type: git
-      url: https://github.com/gazoodle/CenturyVSPump
+      url: https://github.com/BShurilla/CenturyVSPump
       ref: main
 
 binary_sensor:
