@@ -23,6 +23,8 @@ namespace esphome
             enabled_switch_->set_name(name_ + " MODBUS enabled");
             App.register_switch(enabled_switch_);
 #endif
+            // Setup the flow sensor
+            setup_flow_sensor();
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////
@@ -41,6 +43,11 @@ namespace esphome
                 // all messages processed send pending commmands
                 send_next_command_();
             }
+
+            // Read and publish the flow rate
+            float flow_rate = read_flow_rate();
+            ESP_LOGD(TAG, "Flow rate: %.2f GPH", flow_rate);
+            client.publish("pool/sensor/flow_rate", String(flow_rate).c_str());
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////
@@ -246,7 +253,7 @@ namespace esphome
             cmd.payload_.push_back(demand >> 8);
             cmd.on_data_func_ = [=](CenturyVSPump *pump, const std::vector<uint8_t> data)
             {
-                ESP_LOGD(TAG, "Set demand comfirmed");
+                ESP_LOGD(TAG, "Set demand confirmed");
                 on_confirmation_func(pump);
             };
             return cmd;
