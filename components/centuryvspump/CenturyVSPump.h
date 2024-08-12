@@ -2,38 +2,22 @@
 
 #include "esphome/core/component.h"
 #include "esphome/core/automation.h"
-
 #include "esphome/components/modbus/modbus.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/switch/switch.h"
-
 #include <queue>
 #include <list>
 
-// #define MODBUS_ENABLE_SWITCH
-
-/*
-    I know there are multiple classes in this file, but I wanted to keep them in one place
-    so it's easier for other folk to integrate into their ESPHome environment
-
-    This component piggybacks on the modbus driver, replacing logically a modbus_controller
-    since the controller has a hardwired view of what the protocol looks like and this protocol
-    uses user defined functions.
-*/
-
-namespace esphome
-{
+namespace esphome {
     using namespace modbus;
 
-    namespace century_vs_pump
-    {
+    namespace century_vs_pump {
 
         class CenturyVSPump;
         class CenturyVSPumpSensor;
 
         /////////////////////////////////////////////////////////////////////////////////////////////////
-        class CenturyPumpCommand
-        {
+        class CenturyPumpCommand {
         public:
             static const uint8_t MAX_SEND_REPEATS = 5;
             CenturyVSPump *pump_{};
@@ -41,7 +25,6 @@ namespace esphome
             uint8_t ack_{0x20};
             std::vector<uint8_t> payload_ = {};
             std::function<void(CenturyVSPump *pump, const std::vector<uint8_t> &data)> on_data_func_;
-            // limit the number of repeats
             uint8_t send_countdown{MAX_SEND_REPEATS};
 
             bool send();
@@ -54,8 +37,7 @@ namespace esphome
         };
 
         /////////////////////////////////////////////////////////////////////////////////////////////////
-        class CenturyPumpItemBase
-        {
+        class CenturyPumpItemBase {
         public:
             CenturyPumpItemBase() : pump_(nullptr) {}
             CenturyPumpItemBase(CenturyVSPump *pump) : pump_(pump) {}
@@ -67,13 +49,10 @@ namespace esphome
             CenturyVSPump *pump_;
         };
 
-/////////////////////////////////////////////////////////////////////////////////////////////////
 #ifdef MODBUS_ENABLE_SWITCH
-        class CenturyPumpEnabledSwitch : public esphome::switch_::Switch
-        {
+        class CenturyPumpEnabledSwitch : public esphome::switch_::Switch {
         public:
-            void write_state(bool state) override
-            {
+            void write_state(bool state) override {
                 enabled_ = state;
                 this->publish_state(enabled_);
             }
@@ -84,14 +63,7 @@ namespace esphome
 #endif
 
         /////////////////////////////////////////////////////////////////////////////////////////////////
-        //
-        //  To work successfully, this component needs modification to the ESPHome modbus.cpp file which
-        //  can be found in the `modbus` component in https://github.com/gazoodle/esphome branch
-        //  "Feature-Request-#1725"
-        //
-        class CenturyVSPump : public PollingComponent,
-                              public ModbusDevice
-        {
+        class CenturyVSPump : public PollingComponent, public ModbusDevice {
         public:
             CenturyVSPump() {}
 
@@ -102,13 +74,14 @@ namespace esphome
             void update() override;
             void dump_config() override;
 
-            /// called when a modbus response was parsed without errors
             void on_modbus_data(const std::vector<uint8_t> &data) override;
-            /// called when a modbus error response was received
             void on_modbus_error(uint8_t function_code, uint8_t exception_code) override;
-            /// Registers an item with the controller. Called by esphomes code generator
             void add_item(CenturyPumpItemBase *item) { items_.push_back(item); }
             void queue_command_(const CenturyPumpCommand &cmd);
+
+            // Flow Rate Sensor Integration
+            void setup_flow_sensor();
+            float read_flow_rate();
 
         protected:
             void process_modbus_data_(const CenturyPumpCommand *response);
@@ -120,6 +93,13 @@ namespace esphome
             uint32_t last_command_timestamp_;
             uint16_t command_throttle_{10};
 
+            // Flow Rate Sensor Variables
+            byte flowSensorPin = 4; // GPIO pin where the flow sensor is connected (Q0.0 / GPIO4)
+            float flowCalibrationFactor = 0.2;
+            volatile byte flowPulseCount = 0;
+            float flowRate = 0.0;
+            unsigned long oldTime = 0;
+
         public:
             std::string name_;
             std::vector<CenturyPumpItemBase *> items_;
@@ -128,5 +108,22 @@ namespace esphome
 #endif
         };
 
-    }
-}
+        void IRAM_ATTR flowPulseCounter() {
+            flowPulseCount++;
+        }
+
+        void CenturyVSPump::setup_flow_sensor() {
+            pinMode(flowSensorPin, INPUT);
+            digitalWrite(flowSensorPin, HIGH);
+            attachInterrupt(digitalPinToInterrupt(flowSensorPin), flowPulseCounter, FALLING);
+        }
+
+        float CenturyVSPump::read_flow_rate() {
+            float flowRateGPH;
+            if ((millis() - oldTime) > 900) {
+                detachInterrupt(digitalPinToInterrupt(flowSensorPin));
+                flowRateGPH = ((1000.0 / (millis() - oldTime)) * flowPulseCount) / flowCalibrationFactor * 15.8503;
+                oldTime = millis();
+                flowPulseCount = 0;
+                attachInterrupt(digitalPinToInterrupt(flowSensorPin), flowPulseCounter, FALLING);
+            
